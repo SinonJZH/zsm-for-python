@@ -85,10 +85,11 @@ def _selftest() -> int:
             except ValueError:
                 check("非法字符拒绝", True)
             cands = _clean_candidates(list(sessions.values()))
-            check("默认候选=已删除+已归档",
-                  {s.id for s in cands} == {"sessAAA", "sessDDD"}, str({s.id for s in cands}))
-            cands = _clean_candidates(list(sessions.values()), deleted_only=True)
-            check("deleted-only 候选", {s.id for s in cands} == {"sessDDD"})
+            check("默认候选=已删除", {s.id for s in cands} == {"sessDDD"},
+                  str({s.id for s in cands}))
+            cands = _clean_candidates(list(sessions.values()), include_archived=True)
+            check("-a 候选含归档", {s.id for s in cands} == {"sessAAA", "sessDDD"},
+                  str({s.id for s in cands}))
 
             print("[4] plan（级联）")
             plan = store.plan_delete(["sessAAA"])

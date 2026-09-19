@@ -43,10 +43,10 @@ def _parse_selection(text: str, n: int) -> list[int] | None:
 
 
 def _clean_candidates(sessions: list[SessionSummary],
-                      deleted_only: bool = False) -> list[SessionSummary]:
-    """清理候选：已删除（deleted=1）+ ghost；默认再含仅归档的（旧版 UI 删除=归档）。"""
+                      include_archived: bool = False) -> list[SessionSummary]:
+    """清理候选：已删除（deleted=1）+ ghost；include_archived 时连同仅归档的（旧版 UI 删除=归档）。"""
     return [s for s in sessions
-            if s.ghost or s.deleted or (not deleted_only and s.archived)]
+            if s.ghost or s.deleted or (include_archived and s.archived)]
 
 
 def _report_delete(res: dict, json_mode: bool) -> int:
@@ -67,12 +67,14 @@ def _cmd_clean(store: Store, args) -> int:
               file=sys.stderr)
         return 2
     sessions = store.list_sessions(with_disk=False)
-    candidates = _clean_candidates(sessions, args.deleted_only)
+    candidates = _clean_candidates(sessions, args.include_archive)
     if not candidates:
-        print("没有找到已删除/已归档的会话，无需清理。")
+        print("没有找到已删除" + ("或已归档" if args.include_archive else "")
+              + "的会话，无需清理。")
         return 0
     candidates.sort(key=lambda x: -x.updated_ms)
-    print(f"以下 {len(candidates)} 个会话已从 ZCode 界面移除（删除或归档），"
+    scope = "删除或归档" if args.include_archive else "删除"
+    print(f"以下 {len(candidates)} 个会话已从 ZCode 界面移除（{scope}），"
           f"编号仅供参考：\n")
     for i, s in enumerate(candidates, 1):
         title = s.title or ("<ghost>" if s.ghost else "-")

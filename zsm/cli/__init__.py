@@ -6,7 +6,8 @@
   python zsm.py show <id|前缀>              # 只读浏览某会话完整消息流
   python zsm.py plan <id...>                # 删除计划（dry-run，不动任何数据）
   python zsm.py delete <id...> --yes        # 备份 → 删除 → 校验（失败自动还原）
-  python zsm.py clean                       # 交互式批量删除：编号选择（1,3,5-8）
+  python zsm.py clean                       # 交互式批量删除：编号选择（1,3,5-8），
+                                            #   默认仅已删除会话，-a 连同仅归档的
   python zsm.py compat / integrity          # 结构兼容 / 完整性检查（只读）
 
 常用参数:
@@ -108,9 +109,9 @@ def main(argv=None) -> int:
     sp.add_argument("--no-vacuum", action="store_true", help="删除后不执行 VACUUM")
 
     sp = sub.add_parser("clean",
-                        help="交互式批量删除：列出已删除/已归档会话，按编号选择（如 1,3,5-8）")
-    sp.add_argument("--deleted-only", action="store_true",
-                    help="候选只限 deleted=1 的会话（默认含仅归档的）")
+                        help="交互式批量删除：列出已删除会话，按编号选择（如 1,3,5-8）")
+    sp.add_argument("-a", "--include-archive", action="store_true",
+                    help="候选连同仅归档（archived=1，旧版 UI 删除）的会话一起列出")
     sp.add_argument("--limited", action="store_true",
                     help="ZCode 运行时的受限模式（已移除+闲置+未被自动化引用）")
     sp.add_argument("--idle-minutes", type=int, default=60,
