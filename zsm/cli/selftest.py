@@ -34,6 +34,8 @@ def _selftest() -> int:
             failures.append(name)
 
     tmp = Path(tempfile.mkdtemp(prefix="zsm-selftest-"))
+    # 测试[9]用的损坏副本（复制主夹具后 DROP 表制造格式不兼容），收尾须一并删除
+    broken = tmp.parent / (tmp.name + "-broken")
     print(f"临时数据目录: {tmp}\n")
     try:
         old = os.environ.get(RUNNING_OVERRIDE_ENV)
@@ -210,7 +212,6 @@ def _selftest() -> int:
             check("ghost 索引行已删", gone == 0 and res["integrity"]["passed"])
 
             print("[9] 不兼容结构拒绝")
-            broken = tmp.parent / (tmp.name + "-broken")
             shutil.copytree(tmp, broken)
             con = open_rw(broken / "cli" / "db" / "db.sqlite")
             con.execute("DROP TABLE part")
@@ -238,6 +239,7 @@ def _selftest() -> int:
         return 2
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(broken, ignore_errors=True)
 
 
 def _viol(e: DeleteRefused) -> list[tuple[str, str]]:
