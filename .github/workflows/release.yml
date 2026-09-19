@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+# Windows runner 的 stdout 是 cp1252，会让中文输出直接 UnicodeEncodeError
+env:
+  PYTHONUTF8: "1"
+
 jobs:
   build:
     name: build (${{ matrix.target }})
@@ -27,9 +31,9 @@ jobs:
             target: windows-x64
             ext: ".exe"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -73,7 +77,8 @@ jobs:
         run: |
           mkdir -p fake/cli/db fake/v2
           touch fake/cli/db/db.sqlite fake/v2/tasks-index.sqlite
-          "dist/${{ steps.meta.outputs.base }}" --dir fake webui --port 8123 --no-browser &
+          "dist/${{ steps.meta.outputs.base }}" webui --dir "$PWD/fake" \
+            --port 8123 --no-browser &
           PID=$!
           code=000
           for i in $(seq 1 15); do
@@ -97,7 +102,7 @@ jobs:
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -107,7 +112,7 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS.txt
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true

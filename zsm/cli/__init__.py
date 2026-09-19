@@ -66,6 +66,14 @@ def _resolve_dir(args) -> Paths:
 
 
 def main(argv=None) -> int:
+    # 控制台编码不可判定时（如 Windows runner 的 cp1252）不因中文输出崩溃
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream.encoding and stream.encoding.lower() not in ("utf-8", "utf8"):
+                stream.reconfigure(errors="replace")
+        except (AttributeError, OSError):
+            pass
+
     ap = argparse.ArgumentParser(
         prog="zsm", description="ZCode 会话管理器（CLI）— 浏览并彻底删除 ZCode 历史会话",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -114,9 +122,13 @@ def main(argv=None) -> int:
     sub.add_parser("selftest", help="在临时目录构造伪数据目录做全流程自检（不碰真实数据）")
 
     sp = sub.add_parser("webui", help="启动本地 Web 界面（http://127.0.0.1:8765）")
-    # 与全局参数同名，便于 `zsm webui --dir X` 的自然写法（子解析器值覆盖全局值）
-    sp.add_argument("--dir", help="ZCode 数据目录（默认 ~/.zcode）")
-    sp.add_argument("--backups-dir", help="备份目录（默认 <zcode>/zsm-backups）")
+    # 与全局参数同名，便于 `zsm webui --dir X` 的自然写法。
+    # default=SUPPRESS：未在子命令位置给值时不动 namespace——否则会把全局位置
+    # 传入的 --dir 覆盖回 None（argparse 子解析器默认值会覆盖全局值的经典陷阱）。
+    sp.add_argument("--dir", default=argparse.SUPPRESS,
+                    help="ZCode 数据目录（默认 ~/.zcode）")
+    sp.add_argument("--backups-dir", default=argparse.SUPPRESS,
+                    help="备份目录（默认 <zcode>/zsm-backups）")
     sp.add_argument("--port", type=int, default=8765, help="监听端口（默认 8765）")
     sp.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
 
