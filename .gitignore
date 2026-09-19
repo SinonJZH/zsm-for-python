@@ -220,3 +220,8 @@ __marimo__/
 .streamlit/secrets.toml
 # 删除执行报告（可再生数据）
 out/
+
+# PyInstaller 本地构建产物
+build/
+dist/
+*.spec

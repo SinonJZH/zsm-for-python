@@ -75,6 +75,20 @@ zsm/
 webui.py / webui.html   # 本地 Web 界面（stdlib http.server + 单文件页面，调 zsm.core）
 ```
 
+## 获取可执行程序
+
+不想装 Python 的话，从 [Releases](../../releases) 下载对应平台的单文件直接运行
+（`zsm-windows-x64-<版本>.exe` / `zsm-linux-x64-<版本>`，无需安装任何依赖）。
+
+维护者发布流程：推送 `V*` / `v*` 标签（如 `V1.1.0`），GitHub Actions 自动执行
+源码自检 → PyInstaller 打包（onefile）→ 打包产物自检 → WebUI 冒烟测试，
+全部通过后将两个平台的可执行文件与 SHA256SUMS.txt 附到 GitHub Release；
+也可在 Actions 页面手动触发（仅构建，产物在 Artifacts 里下载）。
+Linux 产物在 ubuntu-22.04 构建（glibc ≥ 2.35 可运行）。本地手动打包：
+`pip install psutil rich pyinstaller` 后运行
+`pyinstaller --onefile --name zsm --add-data "zsm/webui.html:zsm" zsm.py`
+（Windows 下 `--add-data` 分隔符用 `;`）。
+
 ## 安全设计
 
 删除是严肃的操作，本工具用四道防线保证它可控、可逆：

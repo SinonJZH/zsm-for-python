@@ -1,0 +1,113 @@
+name: release
+
+# 推送 V*/v* 标签时自动构建并发布 Release；
+# 也可在 Actions 页面手动触发（仅构建并把可执行文件上传为 artifact，不发 Release）。
+on:
+  push:
+    tags: ["V*", "v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux 选 22.04 构建：产物依赖的 glibc 更旧，兼容更多发行版
+          - os: ubuntu-22.04
+            target: linux-x64
+            ext: ""
+          - os: windows-latest
+            target: windows-x64
+            ext: ".exe"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: pip install psutil rich pyinstaller
+
+      - name: 源码自检
+        run: python zsm.py selftest
+
+      - name: 计算版本与产物名
+        id: meta
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="0.0.0-${GITHUB_SHA::7}"
+          fi
+          BASE="zsm-${{ matrix.target }}-${VERSION}${{ matrix.ext }}"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      # webui.html 是运行时按包路径读取的数据文件，必须显式打进包里。
+      # --add-data 的分隔符 Windows 是分号、其余是冒号。
+      - name: PyInstaller 打包
+        shell: bash
+        run: |
+          SEP=":"
+          [[ "$RUNNER_OS" == "Windows" ]] && SEP=";"
+          pyinstaller --onefile --clean --noconfirm \
+            --name "${{ steps.meta.outputs.base }}" \
+            --add-data "zsm/webui.html${SEP}zsm" \
+            zsm.py
+
+      - name: 打包产物自检
+        shell: bash
+        run: "dist/${{ steps.meta.outputs.base }} selftest"
+
+      # 冒烟验证 webui 模块与内嵌页面确实进了包：起服务，GET / 应回 200
+      - name: WebUI 冒烟测试
+        shell: bash
+        run: |
+          mkdir -p fake/cli/db fake/v2
+          touch fake/cli/db/db.sqlite fake/v2/tasks-index.sqlite
+          "dist/${{ steps.meta.outputs.base }}" --dir fake webui --port 8123 --no-browser &
+          PID=$!
+          code=000
+          for i in $(seq 1 15); do
+            sleep 1
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8123/ || true)
+            [[ "$code" == "200" ]] && break
+          done
+          kill "$PID" 2>/dev/null || true
+          echo "GET / => HTTP $code"
+          [[ "$code" == "200" ]]
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: zsm-${{ matrix.target }}
+          path: dist/${{ steps.meta.outputs.base }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 生成 SHA256 校验和
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
