@@ -2,10 +2,12 @@
 
 把 ZCode 会话的最终控制权，交还给用户 —— 命令行版。
 
-ZCode 的 UI"删除"实际只是**归档**：会话从列表里消失，正文却仍然留存在
-`cli/db/db.sqlite` 中，磁盘文件（命令输出、模型输入输出记录、产物缓存）也都还在。
-本工具补上缺失的另一半：浏览全部历史会话（含已归档），并把选定的会话从
-ZCode 数据库与磁盘中**彻底删除**。删除前自动备份，删除后完整性校验，失败自动还原。
+ZCode 的 UI"删除"有两种历史语义，都只是标记、不清数据：旧版把 `tasks` 表的
+`archived` 置 1（归档），新版（2026-09 起）把 `deleted` 置 1（删除）。无论哪种，
+会话正文都仍留存在 `cli/db/db.sqlite` 中，磁盘文件（命令输出、模型输入输出记录、
+产物缓存）也都还在。本工具识别两种标记，补上缺失的另一半：浏览全部历史会话
+（含已删除/已归档），并把选定的会话从 ZCode 数据库与磁盘中**彻底删除**。
+删除前自动备份，删除后完整性校验，失败自动还原。
 
 > 本项目是 [zcode-session-manager](https://github.com/woooooooooolf/zcode-session-manager)
 > （Tauri/Rust 桌面应用，MIT）核心逻辑的 **Python CLI 移植**。会话管理功能与其对齐；
@@ -14,8 +16,10 @@ ZCode 数据库与磁盘中**彻底删除**。删除前自动备份，删除后�
 ## 功能
 
 - **全量扫描**：自动定位 ZCode 数据目录（或 `--dir` 手动指定，支持从 WSL 经
-  `/mnt/c/...` 管理 Windows 侧数据），列出全部会话的标题、状态（已归档/置顶/ghost/
-  子会话）、消息数与磁盘占用
+  `/mnt/c/...` 管理 Windows 侧数据），列出全部会话的标题、状态（已删除/已归档/置顶/
+  ghost/子会话）、消息数与磁盘占用
+- **交互式批量清理**（`clean`）：列出已删除/已归档的会话并编号，输入 `1,3,5-8`
+  这类选择后走完整的"计划 → 确认 → 备份 → 删除 → 校验"流程
 - **会话详情**：只读浏览完整消息流——真实提问、回答、思考过程、工具调用（自动过滤
   合成消息并标注）
 - **删除计划**：dry-run 预览级联范围（含子会话）、逐表删除行数与磁盘释放量
@@ -30,11 +34,13 @@ ZCode 数据库与磁盘中**彻底删除**。删除前自动备份，删除后�
 依赖：Python 3.10+，`pip install psutil rich`（rich 可选，缺失时降级为纯文本输出）。
 
 ```bash
-python zsm.py list                  # 列出全部会话（含已归档/ghost）
+python zsm.py list                  # 列出全部会话（含已删除/已归档/ghost）
 python zsm.py list --fast           # 跨端（/mnt/...）时跳过磁盘统计，显著提速
+python zsm.py list --deleted-only   # 只看新版 UI 删除（deleted=1）的
 python zsm.py show <id|前缀>        # 只读浏览某会话完整消息流
 python zsm.py plan <id...>          # 删除计划（dry-run，不动任何数据）
 python zsm.py delete <id...> --yes  # 备份 → 删除 → 校验（失败自动还原）
+python zsm.py clean                 # 交互式批量删除：编号选择 1,3,5-8 / all / q
 python zsm.py compat                # 数据库结构兼容检查（只读）
 python zsm.py integrity             # 两个库的完整性检查（只读）
 python zsm.py selftest              # 临时目录全流程自检
@@ -42,6 +48,28 @@ python zsm.py selftest              # 临时目录全流程自检
 
 会话 ID 支持唯一前缀匹配（可省略 `sess_` 前缀，有歧义时报错并列出候选）。
 `--json` 获得机器可读输出；`--backups-dir` 自定义备份目录。
+`delete`/`clean` 的执行报告（JSON）写入仓库根 `out/` 目录（可再生数据，已 gitignore）。
+
+## 项目结构
+
+```
+zsm.py                  # 薄入口：python zsm.py <子命令>
+zsm/
+├── core/               # 纯逻辑层（与 UI 无关，可被将来的 WebUI 复用）
+│   ├── paths.py        #   数据目录定位与结构校验
+│   ├── dbutil.py       #   SQLite 打开/内省工具
+│   ├── compat.py       #   格式兼容检查（破坏性操作的安全门）
+│   ├── integrity.py    #   PRAGMA integrity_check
+│   ├── probe.py        #   ZCode 进程探测（psutil + WSL tasklist.exe）
+│   ├── disk.py         #   每会话磁盘残留的统计与删除
+│   ├── backup.py       #   备份/还原 + manifest
+│   └── store.py        #   会话列表/详情/级联计划/彻底删除
+└── cli/                # 命令行层
+    ├── render.py       #   rich 表格与输出渲染
+    ├── interactive.py  #   clean 交互式批量删除
+    ├── selftest.py     #   临时伪数据全流程自检
+    └── __init__.py     #   argparse 入口与子命令分发
+```
 
 ## 安全设计
 
@@ -52,9 +80,9 @@ python zsm.py selftest              # 临时目录全流程自检
 2. **后校验** —— 删除完成后自动对两个库执行 `PRAGMA integrity_check`，异常时
    **自动从本次备份整体还原**并明确提示
 3. **运行保护** —— 检测到 ZCode 正在运行时默认拒绝删除；`--limited` 受限模式只放行
-   「已归档 + 闲置超过阈值（默认 60 分钟）+ 未被启用的自动化引用」的会话，
-   且根会话必须已归档。WSL 内操作 `/mnt/c/...` 时自动改用 `tasklist.exe`
-   探测 Windows 侧进程，探测手段全部不可用则拒绝执行
+   「已从界面移除（已删除或已归档）+ 闲置超过阈值（默认 60 分钟）+ 未被启用的自动化
+   引用」的会话，且根会话必须已从界面移除。WSL 内操作 `/mnt/c/...` 时自动改用
+   `tasklist.exe` 探测 Windows 侧进程，探测手段全部不可用则拒绝执行
 4. **格式兼容检查** —— 数据库结构与预期不符时（compat 检查），拒绝一切破坏性操作
 
 手工还原方法：完全退出 ZCode，把备份目录里的 `db.sqlite`、`tasks-index.sqlite`
