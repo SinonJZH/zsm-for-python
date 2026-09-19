@@ -20,6 +20,8 @@ ZCode 的 UI"删除"有两种历史语义，都只是标记、不清数据：旧
   ghost/子会话）、消息数与磁盘占用
 - **交互式批量清理**（`clean`）：列出已删除/已归档的会话并编号，输入 `1,3,5-8`
   这类选择后走完整的"计划 → 确认 → 备份 → 删除 → 校验"流程
+- **Web 界面**（`webui`）：零依赖本地 Web 服务（仅标准库），浏览器里筛选、勾选、
+  只读浏览消息流、生成删除计划并确认执行；安全模型见下文
 - **会话详情**：只读浏览完整消息流——真实提问、回答、思考过程、工具调用（自动过滤
   合成消息并标注）
 - **删除计划**：dry-run 预览级联范围（含子会话）、逐表删除行数与磁盘释放量
@@ -41,6 +43,7 @@ python zsm.py show <id|前缀>        # 只读浏览某会话完整消息流
 python zsm.py plan <id...>          # 删除计划（dry-run，不动任何数据）
 python zsm.py delete <id...> --yes  # 备份 → 删除 → 校验（失败自动还原）
 python zsm.py clean                 # 交互式批量删除：编号选择 1,3,5-8 / all / q
+python zsm.py webui                 # 本地 Web 界面（http://127.0.0.1:8765）
 python zsm.py compat                # 数据库结构兼容检查（只读）
 python zsm.py integrity             # 两个库的完整性检查（只读）
 python zsm.py selftest              # 临时目录全流程自检
@@ -69,6 +72,7 @@ zsm/
     ├── interactive.py  #   clean 交互式批量删除
     ├── selftest.py     #   临时伪数据全流程自检
     └── __init__.py     #   argparse 入口与子命令分发
+webui.py / webui.html   # 本地 Web 界面（stdlib http.server + 单文件页面，调 zsm.core）
 ```
 
 ## 安全设计
@@ -84,6 +88,11 @@ zsm/
    引用」的会话，且根会话必须已从界面移除。WSL 内操作 `/mnt/c/...` 时自动改用
    `tasklist.exe` 探测 Windows 侧进程，探测手段全部不可用则拒绝执行
 4. **格式兼容检查** —— 数据库结构与预期不符时（compat 检查），拒绝一切破坏性操作
+
+WebUI（`zsm webui`）额外加了四层防护：只监听 `127.0.0.1`；校验 Host 头（防 DNS
+rebinding）；每次启动生成随机 token，所有删除类 POST 必须携带（同时使浏览器跨站
+请求的 CORS 预检必然失败，防恶意网页 CSRF）；会话 ID 严格校验字符集（防路径穿越）。
+页面内的删除仍需输入 yes 二次确认，服务端复用与 CLI 完全相同的安全轨。
 
 手工还原方法：完全退出 ZCode，把备份目录里的 `db.sqlite`、`tasks-index.sqlite`
 拷回 `<zcode>/cli/db/`、`<zcode>/v2/`（先删除原位的 `-wal`/`-shm`），

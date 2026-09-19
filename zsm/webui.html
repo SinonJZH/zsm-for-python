@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZCode 会话管理器</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1c2330; --dim: #68738a;
+    --line: #e3e7ee; --accent: #2563eb; --danger: #dc2626;
+    --ok: #16a34a; --warn: #d97706;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.6 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+           padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line);
+           position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 16px; margin: 0; }
+  #dir { color: var(--dim); font-size: 12px; max-width: 340px; overflow: hidden;
+         text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 12px; padding: 2px 10px; border-radius: 999px;
+           background: #eef1f6; color: var(--dim); white-space: nowrap; }
+  .badge.ok    { background: #e7f6ec; color: var(--ok); }
+  .badge.bad   { background: #fdeaea; color: var(--danger); }
+  .badge.warn  { background: #fdf3e2; color: var(--warn); }
+  header .spacer { flex: 1; }
+  button { font: inherit; padding: 6px 14px; border: 1px solid var(--line);
+           border-radius: 8px; background: var(--card); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  main { padding: 16px 20px 60px; max-width: 1200px; margin: 0 auto; }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip { border-radius: 999px; padding: 4px 14px; }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #search { flex: 1; min-width: 160px; max-width: 320px; padding: 6px 12px;
+            border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  table { width: 100%; border-collapse: collapse; background: var(--card);
+          border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  th { background: #fafbfd; color: var(--dim); font-weight: 500; font-size: 12px; }
+  tr.row:hover { background: #f4f7ff; }
+  td.title { cursor: pointer; max-width: 420px; overflow: hidden; text-overflow: ellipsis;
+             white-space: nowrap; }
+  td.title:hover { color: var(--accent); }
+  .st { font-size: 12px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+  .st.deleted { background: #fdeaea; color: var(--danger); }
+  .st.archived { background: #eef1f6; color: var(--dim); }
+  .st.pinned { background: #e8effd; color: var(--accent); }
+  .st.ghost { background: #f3e8fd; color: #7c3aed; }
+  .st.active { background: #e7f6ec; color: var(--ok); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+  #count { color: var(--dim); font-size: 12px; }
+  .modal { position: fixed; inset: 0; background: rgba(15, 20, 30, .45);
+           display: flex; align-items: center; justify-content: center; z-index: 20; }
+  .modal .box { background: var(--card); border-radius: 12px; padding: 20px 24px;
+                width: min(720px, 94vw); max-height: 88vh; overflow: auto; }
+  .modal h2 { margin: 0 0 10px; font-size: 15px; }
+  .btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+  #plan-body table { margin: 8px 0; }
+  #plan-body .muted { color: var(--dim); font-size: 12px; }
+  .opts { margin: 10px 0; padding: 10px 12px; background: #fafbfd;
+          border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 6px; }
+  #confirm { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px;
+             font: inherit; width: 200px; }
+  #banner { margin: 10px 20px 0; padding: 10px 14px; border-radius: 10px;
+            background: #fdeaea; color: var(--danger); white-space: pre-wrap; }
+  .hidden { display: none !important; }
+  /* detail drawer */
+  #drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(680px, 96vw);
+            background: var(--card); border-left: 1px solid var(--line);
+            box-shadow: -8px 0 30px rgba(0,0,0,.08); z-index: 15;
+            display: flex; flex-direction: column; }
+  .d-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px;
+            border-bottom: 1px solid var(--line); }
+  .d-head h2 { font-size: 14px; margin: 0; flex: 1; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+  #d-meta { padding: 8px 18px; color: var(--dim); font-size: 12px;
+            border-bottom: 1px solid var(--line); }
+  #d-msgs { overflow: auto; padding: 10px 18px 30px; }
+  .msg { margin: 12px 0; }
+  .msg .who { font-size: 12px; color: var(--dim); margin-bottom: 2px; }
+  .msg.user .who { color: var(--accent); }
+  .msg .bubble { background: #fafbfd; border: 1px solid var(--line);
+                 border-radius: 10px; padding: 8px 12px; white-space: pre-wrap;
+                 word-break: break-word; }
+  .msg.hidden-msg { opacity: .55; }
+  .reasoning { color: var(--dim); font-style: italic; }
+  .tool { font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+          background: #f4f5f7; border-radius: 8px; padding: 6px 10px; margin: 4px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ZCode 会话管理器</h1>
+  <span id="dir" title=""></span>
+  <span class="badge" id="b-compat">…</span>
+  <span class="badge" id="b-integrity">…</span>
+  <span class="badge" id="b-running">…</span>
+  <span class="spacer"></span>
+  <button id="btn-refresh">刷新</button>
+</header>
+<div id="banner" class="hidden"></div>
+<main>
+  <div class="toolbar">
+    <button class="chip active" data-f="all">全部</button>
+    <button class="chip" data-f="deleted">已删除</button>
+    <button class="chip" data-f="archived">已归档</button>
+    <button class="chip" data-f="active">活跃</button>
+    <input id="search" placeholder="搜索标题 / ID…">
+    <label><input type="checkbox" id="sel-all"> 全选可见</label>
+    <button id="btn-plan" class="primary" disabled>生成删除计划（已选 0）</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:34px"></th><th>标题</th><th style="width:130px">状态</th>
+      <th style="width:130px">更新时间</th><th style="width:60px">消息</th>
+      <th style="width:90px">磁盘</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p id="count"></p>
+</main>
+
+<div id="modal-plan" class="modal hidden">
+  <div class="box">
+    <h2>删除计划</h2>
+    <div id="plan-body"></div>
+    <div class="opts">
+      <label><input type="checkbox" id="opt-limited">
+        受限模式（ZCode 运行中仅删「已从界面移除 + 闲置超阈值 + 未被自动化引用」的会话）</label>
+      <label>闲置阈值（分钟）<input type="number" id="opt-idle" value="60" min="1" style="width:70px"></label>
+      <label><input type="checkbox" id="opt-vacuum" checked> 删除后 VACUUM 回收数据库空间</label>
+    </div>
+    <p style="margin:6px 0">输入 <b>yes</b> 确认执行：</p>
+    <input id="confirm" placeholder="yes" autocomplete="off">
+    <div class="btns">
+      <button id="btn-cancel">取消</button>
+      <button id="btn-exec" class="danger">执行删除</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-result" class="modal hidden">
+  <div class="box">
+    <h2>删除结果</h2>
+    <pre id="result-body" style="white-space:pre-wrap;font-size:12px"></pre>
+    <div class="btns"><button onclick="hide('modal-result')">关闭</button></div>
+  </div>
+</div>
+
+<div id="drawer" class="hidden">
+  <div class="d-head"><h2 id="d-title"></h2><button onclick="hide('drawer')">关闭</button></div>
+  <div id="d-meta"></div>
+  <div id="d-msgs"></div>
+</div>
+
+<script>
+const TOKEN = "__ZSM_TOKEN__";
+const $ = (id) => document.getElementById(id);
+let SESSIONS = [], FILTER = "all", SELECTED = new Set();
+
+function hide(id) { $(id).classList.add("hidden"); }
+function show(id) { $(id).classList.remove("hidden"); }
+
+function banner(msg) {
+  const b = $("banner");
+  if (!msg) { b.classList.add("hidden"); return; }
+  b.textContent = msg; b.classList.remove("hidden");
+  window.scrollTo({ top: 0 });
+}
+
+async function api(path, opts = {}) {
+  const init = { headers: { "X-ZSM-Token": TOKEN } };
+  if (opts.body !== undefined) {
+    init.method = "POST";
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(opts.body);
+  }
+  const r = await fetch(path, init);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.message || r.statusText), { data });
+  return data;
+}
+
+function stLabel(s) {
+  if (s.ghost) return "ghost";
+  const p = [];
+  if (s.deleted) p.push("已删除");
+  if (s.archived) p.push("已归档");
+  if (s.pinned) p.push("置顶");
+  return p.join(" ");
+}
+function stClass(s) {
+  if (s.ghost) return "ghost";
+  if (s.deleted) return "deleted";
+  if (s.archived) return "archived";
+  if (s.pinned) return "pinned";
+  return "active";
+}
+function fmtBytes(n) {
+  if (!n) return "0B";
+  const u = ["B", "KB", "MB", "GB"]; let i = 0;
+  while (n >= 1024 && i < 3) { n /= 1024; i++; }
+  return (i ? n.toFixed(1) : n) + u[i];
+}
+function fmtTime(ms) {
+  if (!ms) return "-";
+  const d = new Date(ms);
+  const p = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function loadState() {
+  try {
+    const st = await api("/api/state");
+    $("dir").textContent = st.dir; $("dir").title = st.dir;
+    const c = $("b-compat");
+    c.textContent = st.compat.ok ? "结构兼容" : "结构异常";
+    c.className = "badge " + (st.compat.ok ? "ok" : "bad");
+    c.title = (st.compat.problems || []).join("\n") || "数据库结构与预期一致";
+    const okAll = Object.values(st.integrity).every(x => x.state === "ok");
+    const ig = $("b-integrity");
+    ig.textContent = okAll ? "完整性 OK" : "完整性异常";
+    ig.className = "badge " + (okAll ? "ok" : "bad");
+    ig.title = Object.entries(st.integrity).map(([k, v]) => `${k}: ${v.state}`).join("\n");
+    const r = $("b-running");
+    if (st.zcode_running === null) { r.textContent = "ZCode 进程未知"; r.className = "badge warn"; }
+    else if (st.zcode_running) { r.textContent = "ZCode 运行中"; r.className = "badge warn"; }
+    else { r.textContent = "ZCode 未运行"; r.className = "badge ok"; }
+  } catch (e) { banner("加载状态失败：" + e.message); }
+}
+
+function visibleSessions() {
+  const q = $("search").value.trim().toLowerCase();
+  return SESSIONS.filter(s => {
+    if (FILTER === "deleted" && !s.deleted) return false;
+    if (FILTER === "archived" && !s.archived) return false;
+    if (FILTER === "active" && (s.archived || s.deleted || s.ghost)) return false;
+    if (q && !(s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function renderRows() {
+  const rows = visibleSessions();
+  const tb = $("rows");
+  tb.innerHTML = "";
+  for (const s of rows) {
+    const tr = document.createElement("tr");
+    tr.className = "row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = SELECTED.has(s.id);
+    cb.onchange = () => { cb.checked ? SELECTED.add(s.id) : SELECTED.delete(s.id); syncSel(); };
+    const td0 = document.createElement("td"); td0.appendChild(cb);
+    const td1 = document.createElement("td"); td1.className = "title";
+    td1.textContent = (s.parent_id ? "↳ " : "") + (s.title || (s.ghost ? "<ghost>" : "-"));
+    td1.title = s.id + "（点击查看详情）";
+    td1.onclick = () => showDetail(s.id);
+    const td2 = document.createElement("td");
+    const sp = document.createElement("span");
+    sp.className = "st " + stClass(s); sp.textContent = stLabel(s) || "活跃";
+    td2.appendChild(sp);
+    const td3 = document.createElement("td"); td3.textContent = fmtTime(s.updated_ms);
+    const td4 = document.createElement("td"); td4.className = "num";
+    td4.textContent = s.message_count ?? "-";
+    const td5 = document.createElement("td"); td5.className = "num";
+    td5.textContent = fmtBytes(s.disk_bytes);
+    tr.append(td0, td1, td2, td3, td4, td5);
+    tb.appendChild(tr);
+  }
+  $("count").textContent = `共 ${rows.length} 个会话（总 ${SESSIONS.length}）。`
+    + " 状态说明：已删除=新版 UI 删除(deleted=1)；已归档=旧版 UI 删除(archived=1)；"
+    + "ghost=索引残留；活跃=仍在界面列表。点击标题可只读浏览消息。";
+  syncSel();
+}
+
+function syncSel() {
+  $("btn-plan").disabled = SELECTED.size === 0;
+  $("btn-plan").textContent = `生成删除计划（已选 ${SELECTED.size}）`;
+}
+
+async function loadSessions() {
+  try {
+    SESSIONS = await api("/api/sessions");
+    const alive = new Set(SESSIONS.map(s => s.id));
+    SELECTED = new Set([...SELECTED].filter(id => alive.has(id)));
+    renderRows();
+  } catch (e) { banner("加载会话失败：" + e.message); }
+}
+
+document.querySelectorAll(".chip").forEach(ch => ch.onclick = () => {
+  document.querySelectorAll(".chip").forEach(x => x.classList.remove("active"));
+  ch.classList.add("active");
+  FILTER = ch.dataset.f;
+  renderRows();
+});
+$("search").oninput = renderRows;
+$("sel-all").onchange = () => {
+  const ids = visibleSessions().map(s => s.id);
+  if ($("sel-all").checked) ids.forEach(id => SELECTED.add(id));
+  else ids.forEach(id => SELECTED.delete(id));
+  renderRows();
+};
+$("btn-refresh").onclick = () => { banner(""); loadState(); loadSessions(); };
+
+let PLAN = null;
+$("btn-plan").onclick = async () => {
+  banner("");
+  try {
+    PLAN = await api("/api/plan", { body: { ids: [...SELECTED] } });
+    $("plan-body").innerHTML = renderPlan(PLAN);
+    show("modal-plan");
+  } catch (e) { banner(planErr(e)); }
+};
+function renderPlan(p) {
+  const metas = p.metas.map(m => {
+    const f = [];
+    if (m.deleted) f.push("已删除");
+    if (m.ghost) f.push("ghost");
+    if (m.archived) f.push("已归档");
+    return `<li>${m.id}${f.length ? ` (${f.join(",")})` : ""} ${m.title}</li>`;
+  }).join("");
+  const counts = p.counts.map(c => `<tr><td>${c.table}</td><td class="num">${c.rows}</td></tr>`).join("");
+  const disks = p.disk_targets.length
+    ? p.disk_targets.map(d => `<li>${d.rel} <span class="muted">(${fmtBytes(d.bytes)})</span></li>`).join("")
+    : `<span class="muted">（这些会话在磁盘上没有残留文件）</span>`;
+  return `
+    <p>级联展开后共 <b>${p.all_ids.length}</b> 个会话：</p>
+    <ul style="margin:4px 0">${metas}</ul>
+    <p style="margin:8px 0 2px">将删除的数据库行：</p>
+    <table><tbody>${counts}</tbody></table>
+    <p style="margin:8px 0 2px">将删除的磁盘文件/目录：</p>
+    <ul style="margin:4px 0">${disks}</ul>
+    <p>磁盘将释放 <b>${fmtBytes(p.disk_bytes)}</b>；备份目录 <code>${p.backups_dir}</code></p>`;
+}
+function planErr(e) {
+  const d = e.data || {};
+  let s = `操作被拒绝 [${d.error || "error"}]：${e.message}`;
+  if (d.problems && d.problems.length) s += "\n  - " + d.problems.join("\n  - ");
+  return s;
+}
+$("btn-cancel").onclick = () => hide("modal-plan");
+$("btn-exec").onclick = async () => {
+  if ($("confirm").value.trim().toLowerCase() !== "yes") { banner("请在输入框中输入 yes 确认。"); return; }
+  banner("");
+  try {
+    const res = await api("/api/delete", { body: {
+      ids: PLAN.all_ids,
+      limited: $("opt-limited").checked,
+      idle_minutes: parseInt($("opt-idle").value) || 60,
+      vacuum: $("opt-vacuum").checked,
+    } });
+    hide("modal-plan");
+    const it = res.integrity;
+    $("result-body").textContent = JSON.stringify({
+      备份目录: res.backup_dir,
+      删除行数: res.deleted, 索引删除: res.index,
+      磁盘: res.disk, 警告: res.warnings,
+      完整性: it.passed ? "通过" : { 未通过: it.details, 已还原: it.restored, 日志: it.restore_log },
+    }, null, 2);
+    show("modal-result");
+    SELECTED.clear();
+    loadState(); loadSessions();
+  } catch (e) {
+    hide("modal-plan");
+    banner(planErr(e));
+  }
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { hide("modal-plan"); hide("modal-result"); hide("drawer"); }
+});
+
+async function showDetail(id) {
+  try {
+    const d = await api("/api/session/" + id);
+    $("d-title").textContent = d.title || "<无标题>";
+    $("d-meta").textContent = `${d.id}  ·  ${d.directory}  ·  创建 ${fmtTime(d.created_ms)}  更新 ${fmtTime(d.updated_ms)}`;
+    const box = $("d-msgs");
+    box.innerHTML = "";
+    d.messages.forEach((m, i) => {
+      const div = document.createElement("div");
+      div.className = "msg " + (m.role || "") + (m.visible ? "" : " hidden-msg");
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = `#${i + 1} ${m.role || "?"}${m.visible ? "" : " [隐藏]"} (${m.source})`;
+      div.appendChild(who);
+      for (const p of m.parts) {
+        const el = document.createElement("div");
+        if (p.type === "text") {
+          el.className = "bubble"; el.textContent = p.text ?? "";
+        } else if (p.type === "reasoning") {
+          el.className = "bubble reasoning"; el.textContent = p.text ?? "";
+        } else if (p.type === "tool") {
+          el.className = "tool";
+          const st = p.state || {};
+          const inp = st.input || {};
+          el.textContent = `🔧 ${p.tool} (${st.status ?? ""}) ${inp.description || inp.command || inp.file_path || ""}`;
+        } else if (p.type === "timeline") {
+          el.className = "tool"; el.textContent = `⏱ ${p.timelineType ?? "timeline"}`;
+        } else if (p.type === "step-start" || p.type === "step-finish") {
+          continue;
+        } else {
+          el.className = "tool"; el.textContent = `[${p.type}]`;
+        }
+        div.appendChild(el);
+      }
+      box.appendChild(div);
+    });
+    show("drawer");
+  } catch (e) { banner("加载详情失败：" + e.message); }
+}
+
+loadState(); loadSessions();
+</script>
+</body>
+</html>

@@ -113,6 +113,13 @@ def main(argv=None) -> int:
     sub.add_parser("integrity", help="两个库的完整性检查（只读）")
     sub.add_parser("selftest", help="在临时目录构造伪数据目录做全流程自检（不碰真实数据）")
 
+    sp = sub.add_parser("webui", help="启动本地 Web 界面（http://127.0.0.1:8765）")
+    # 与全局参数同名，便于 `zsm webui --dir X` 的自然写法（子解析器值覆盖全局值）
+    sp.add_argument("--dir", help="ZCode 数据目录（默认 ~/.zcode）")
+    sp.add_argument("--backups-dir", help="备份目录（默认 <zcode>/zsm-backups）")
+    sp.add_argument("--port", type=int, default=8765, help="监听端口（默认 8765）")
+    sp.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+
     args = ap.parse_args(argv)
 
     try:
@@ -207,5 +214,10 @@ def _dispatch(args) -> int:
 
     if args.cmd == "clean":
         return _cmd_clean(store, args)
+
+    if args.cmd == "webui":
+        from ..webui import serve
+        return serve(paths, backups_dir=args.backups_dir, port=args.port,
+                     open_browser=not args.no_browser)
 
     raise AssertionError(args.cmd)
